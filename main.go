@@ -21,6 +21,9 @@ type Config struct {
 	Table      string
 	DaysToKeep int
 	DryRun     bool
+	ExportSQL  bool
+	ExportCSV  bool
+	ExportPath string
 }
 
 func main() {
@@ -56,6 +59,9 @@ func parseFlags() *Config {
 	flag.StringVar(&config.Table, "table", "", "Table name to archive")
 	flag.IntVar(&config.DaysToKeep, "days", 90, "Number of days to keep in the original table")
 	flag.BoolVar(&config.DryRun, "dry-run", false, "Run without making changes")
+	flag.BoolVar(&config.ExportSQL, "export-sql", false, "Export archived table to SQL file")
+	flag.BoolVar(&config.ExportCSV, "export-csv", false, "Export archived table to CSV file")
+	flag.StringVar(&config.ExportPath, "export-path", "./archives", "Path to save exported SQL files")
 
 	flag.Parse()
 
@@ -144,7 +150,7 @@ func archiveTable(db *sql.DB, config *Config, logger *Logger) error {
 		return fmt.Errorf("failed to verify copied records: %v", err)
 	}
 
-	if copiedCount != archiveCount {
+	if copiedCount != keepCount {
 		logger.Error("Record count mismatch! Expected: %d, Got: %d", archiveCount, copiedCount)
 		return fmt.Errorf("record count mismatch")
 	}
@@ -172,6 +178,29 @@ func archiveTable(db *sql.DB, config *Config, logger *Logger) error {
 	}
 
 	logger.Info("Archive complete! Old table renamed to %s, new table is now %s", archiveTableName, config.Table)
+
+	// Step 9: Export archived table if requested
+	if config.ExportSQL || config.ExportCSV {
+		if config.ExportSQL {
+			logger.Info("Step 9a: Exporting archived table to SQL file")
+			if err := exportTableToSQL(db, archiveTableName, config, logger); err != nil {
+				logger.Error("Failed to export SQL: %v", err)
+				// Don't fail the entire process if export fails
+			} else {
+				logger.Info("SQL export completed successfully")
+			}
+		}
+
+		if config.ExportCSV {
+			logger.Info("Step 9b: Exporting archived table to CSV file")
+			if err := exportTableToCSV(db, archiveTableName, config, logger); err != nil {
+				logger.Error("Failed to export CSV: %v", err)
+				// Don't fail the entire process if export fails
+			} else {
+				logger.Info("CSV export completed successfully")
+			}
+		}
+	}
 
 	return nil
 }
@@ -214,7 +243,7 @@ func countRecords(db *sql.DB, config *Config, logger *Logger) (archiveCount, kee
 
 func detectDateColumn(db *sql.DB, tableName string) (string, error) {
 	// Priority order for date columns
-	dateColumns := []string{"smsdate", "request_time", "deli_date", "created_at", "updated_at"}
+	dateColumns := []string{"smsdate", "request_time", "deli_date", "created_at", "updated_at", "req_date", "res_date", "date_created", "created"}
 
 	query := fmt.Sprintf("SHOW COLUMNS FROM `%s`", tableName)
 	rows, err := db.Query(query)
@@ -254,7 +283,7 @@ func modifyCreateStatement(createStmt, oldName, newName, suffix string) string {
 	// Replace table name
 	createStmt = strings.Replace(createStmt, fmt.Sprintf("CREATE TABLE `%s`", oldName), fmt.Sprintf("CREATE TABLE `%s`", newName), 1)
 
-	// Update index names with suffix
+	// Update index names with suffix (KEY, UNIQUE KEY, INDEX)
 	// re := regexp.MustCompile(`(KEY|INDEX|UNIQUE KEY)\s+` + "`" + `([^`]+)` + "`")
 	re := regexp.MustCompile("(KEY|INDEX|UNIQUE KEY)\\s+`([^`]+)`")
 	createStmt = re.ReplaceAllStringFunc(createStmt, func(match string) string {
@@ -275,11 +304,24 @@ func modifyCreateStatement(createStmt, oldName, newName, suffix string) string {
 		return match
 	})
 
+	// Update foreign key constraint names with suffix
+	// Match: CONSTRAINT `constraint_name` FOREIGN KEY
+	fkRe := regexp.MustCompile(`CONSTRAINT\s+` + "`" + `([^` + "`" + `]+)` + "`" + `\s+FOREIGN KEY`)
+	createStmt = fkRe.ReplaceAllStringFunc(createStmt, func(match string) string {
+		parts := fkRe.FindStringSubmatch(match)
+		if len(parts) >= 2 {
+			constraintName := parts[1]
+			newConstraintName := fmt.Sprintf("%s_%s", constraintName, suffix)
+			return fmt.Sprintf("CONSTRAINT `%s` FOREIGN KEY", newConstraintName)
+		}
+		return match
+	})
+
 	return createStmt
 }
 
 func copyOldRecords(db *sql.DB, sourceTable, destTable, dateColumn string, cutoffDate time.Time, logger *Logger) error {
-	query := fmt.Sprintf("INSERT INTO `%s` SELECT * FROM `%s` WHERE `%s` < ?", destTable, sourceTable, dateColumn)
+	query := fmt.Sprintf("INSERT INTO `%s` SELECT * FROM `%s` WHERE `%s` > ?", destTable, sourceTable, dateColumn)
 	logger.Info("Executing: %s with cutoff %s", query, cutoffDate.Format("2006-01-02"))
 
 	result, err := db.Exec(query, cutoffDate)
@@ -294,7 +336,7 @@ func copyOldRecords(db *sql.DB, sourceTable, destTable, dateColumn string, cutof
 }
 
 func deleteOldRecords(db *sql.DB, table, dateColumn string, cutoffDate time.Time, logger *Logger) error {
-	query := fmt.Sprintf("DELETE FROM `%s` WHERE `%s` < ?", table, dateColumn)
+	query := fmt.Sprintf("DELETE FROM `%s` WHERE `%s` > ?", table, dateColumn)
 	logger.Info("Executing: %s with cutoff %s", query, cutoffDate.Format("2006-01-02"))
 
 	result, err := db.Exec(query, cutoffDate)
