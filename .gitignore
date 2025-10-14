@@ -2,3 +2,4 @@ archive_*
 .env
 db-archive
 tmp/
+backups/
