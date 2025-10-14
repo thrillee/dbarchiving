@@ -1,57 +1,44 @@
-# Database Archive CLI Tool
+A robust Go-based CLI tool for archiving old database records.
+Now with CSV export support for easy data analysis and backup.
 
-A robust Go-based CLI tool for archiving old database records. This tool automates the process of creating archive tables, migrating old data, and maintaining clean production tables.
+🚀 Features
 
-## Features
+✅ Automatic table schema replication
 
-- ✅ Automatic table schema replication
-- ✅ Smart date column detection
-- ✅ Index name modification with timestamps
-- ✅ Safe data migration with verification
-- ✅ Comprehensive logging
-- ✅ Dry-run mode for testing
-- ✅ Foreign key constraint handling
-- ✅ Rollback on errors
+✅ Smart date column detection
 
-## Installation
+✅ Index name modification with timestamps
 
-### Prerequisites
+✅ Safe data migration with verification
 
-- Go 1.16 or higher
-- MySQL database access
+✅ Comprehensive logging
 
-### Setup
+✅ Dry-run mode for testing
 
-1. Create a new directory and initialize the project:
+✅ Foreign key constraint handling
 
-```bash
+✅ Rollback on errors
+
+✅ CSV export support (new)
+
+✅ Enhanced export options with -export-sql and -export-csv flags
+
+🧩 Installation
+Prerequisites
+
+Go 1.16 or higher
+
+MySQL database access
+
+Setup
 mkdir db-archive-tool
 cd db-archive-tool
-```
-
-2. Create `go.mod` file:
-
-```bash
 go mod init db-archive-tool
-```
-
-3. Install dependencies:
-
-```bash
 go get github.com/go-sql-driver/mysql
-```
-
-4. Save the main.go file and build:
-
-```bash
 go build -o db-archive
-```
 
-## Usage
-
-### Basic Command
-
-```bash
+⚙️ Usage
+Basic Command
 ./db-archive \
   -host=localhost \
   -port=3306 \
@@ -60,178 +47,226 @@ go build -o db-archive
   -database=your_database \
   -table=smspush \
   -days=90
-```
 
-### Command Line Flags
+🧾 Command Line Flags
+Flag	Description	Default	Required
+-host	Database host	localhost	No
+-port	Database port	3306	No
+-user	Database user	root	No
+-password	Database password	(empty)	No
+-database	Database name	-	Yes
+-table	Table to archive	-	Yes
+-days	Days of data to keep	90	No
+-dry-run	Run without making changes	false	No
+-export-sql	Export to SQL file (renamed from -export)	false	No
+-export-csv	Export to CSV file	false	No
+-export-path	Custom export directory path	./exports	No
+💡 New Features
+1. New Flags
 
-| Flag | Description | Default | Required |
-|------|-------------|---------|----------|
-| `-host` | Database host | localhost | No |
-| `-port` | Database port | 3306 | No |
-| `-user` | Database user | root | No |
-| `-password` | Database password | (empty) | No |
-| `-database` | Database name | - | **Yes** |
-| `-table` | Table to archive | - | **Yes** |
-| `-days` | Days of data to keep | 90 | No |
-| `-dry-run` | Run without making changes | false | No |
+-export-csv — Enables CSV export (default: false)
 
-### Examples
+-export-sql — Renamed from -export for clarity
 
-#### Test run (dry-run mode)
+2. CSV Export Functionality
 
-```bash
+The tool now supports exporting archived data directly to CSV format with:
+
+Proper column headers
+
+Batch processing (5000 rows per batch)
+
+Memory-efficient streaming
+
+Accurate data formatting for all MySQL data types
+
+Automatic CSV escaping for commas, quotes, and newlines
+
+3. CSV Format Details
+
+First row = column headers
+
+NULL values → empty strings
+
+Dates formatted as 2006-01-02 15:04:05
+
+Booleans as true / false
+
+Proper escaping for special characters
+
+🧪 Usage Examples
+Export to CSV only
 ./db-archive \
   -database=sms_db \
   -table=smspush \
   -days=90 \
-  -dry-run=true
-```
+  -export-csv=true \
+  -password=yourpassword
 
-#### Archive smspush table (keep last 90 days)
-
-```bash
+Export to SQL only
 ./db-archive \
-  -host=localhost \
-  -user=dbuser \
-  -password=secret123 \
   -database=sms_db \
   -table=smspush \
-  -days=90
-```
+  -days=90 \
+  -export-sql=true \
+  -password=yourpassword
 
-#### Archive submitresponse table (keep last 60 days)
-
-```bash
+Export to both SQL and CSV
 ./db-archive \
   -database=sms_db \
-  -table=submitresponse \
-  -days=60 \
-  -password=$DB_PASSWORD
-```
+  -table=smspush \
+  -days=90 \
+  -export-sql=true \
+  -export-csv=true \
+  -password=yourpassword
 
-#### Archive smsdelivery table (keep last 30 days)
-
-```bash
+Custom export directory
 ./db-archive \
   -database=sms_db \
-  -table=smsdelivery \
-  -days=30 \
-  -password=$DB_PASSWORD
-```
+  -table=smspush \
+  -days=90 \
+  -export-sql=true \
+  -export-csv=true \
+  -export-path=/backup/archives \
+  -password=yourpassword
 
-## How It Works
+Archive without any export (default)
+./db-archive \
+  -database=sms_db \
+  -table=smspush \
+  -days=90 \
+  -password=yourpassword
 
-The tool performs the following steps:
+📂 Output Files
+Format	Example Filename	Description
+CSV	smspush_archive_20251014_143052.csv	Exported CSV with headers
+SQL	smspush_archive_20251014_143052.sql	SQL dump of archived data
 
-1. **Retrieves CREATE TABLE statement** - Gets the exact schema of the source table
-2. **Counts records** - Calculates how many records will be archived vs kept
-3. **Creates new table** - Creates a new table with modified index names (appends date suffix)
-4. **Copies old records** - Moves records older than the cutoff date to the new table
-5. **Verifies copy** - Ensures all records were copied correctly
-6. **Deletes old records** - Removes archived records from the original table
-7. **Renames tables** - Renames original table with archive suffix, then renames the cleaned table to the original name
+Both files are timestamped and saved in the same export directory.
 
-### Example Flow
+🧠 How It Works
 
-If you run on `2025-10-01` with `-table=smspush -days=90`:
+Retrieves CREATE TABLE statement
 
-- Creates table: `smspush_20251001` (with records older than July 3, 2025)
-- Original table `smspush` keeps records from July 3, 2025 onwards
-- After completion, `smspush` contains only recent data
-- Archive is stored in `smspush_archive_20251001`
+Detects date column and cutoff date
 
-## Date Column Detection
+Creates archive table with modified indexes
 
-The tool automatically detects the appropriate date column in this priority order:
+Copies records older than cutoff date
 
-1. `smsdate`
-2. `request_time`
-3. `deli_date`
-4. `created_at`
-5. `updated_at`
-6. Any other datetime column
+Exports archived data (CSV / SQL if enabled)
 
-## Logging
+Verifies record counts
 
-Each run creates a timestamped log file: `archive_YYYYMMDD_HHMMSS.log`
+Deletes archived records from source table
 
-Logs include:
-- Connection details
-- Record counts
-- SQL operations
-- Errors and warnings
-- Execution time
+Renames tables and finalizes archive
 
-## Safety Features
+🕵️‍♂️ Date Column Detection
 
-- **Dry-run mode**: Test the operation without making changes
-- **Record verification**: Verifies copied data before deleting from source
-- **Comprehensive logging**: All operations are logged for audit
-- **Error rollback**: If copying fails, the new table is dropped
-- **Count validation**: Ensures archive count matches expected records
+Automatically detects the most relevant date column in this order:
 
-## Environment Variables
+smsdate
 
-You can use environment variables for sensitive data:
+request_time
 
-```bash
+deli_date
+
+created_at
+
+updated_at
+
+Any other datetime column
+
+📜 Logging
+
+Each run generates a log file:
+archive_YYYYMMDD_HHMMSS.log
+
+Includes:
+
+Connection info
+
+Record counts
+
+SQL operations
+
+Export details
+
+Errors & warnings
+
+Execution time
+
+🧯 Safety Features
+
+Dry-run mode — simulate without changing data
+
+Record verification — ensures data integrity
+
+Full logging — audit-friendly
+
+Rollback on error — prevents partial migrations
+
+Count validation — validates copy accuracy
+
+🔐 Environment Variables
+
+For sensitive data:
+
 export DB_PASSWORD="your_password"
 ./db-archive -database=sms_db -table=smspush -days=90 -password=$DB_PASSWORD
-```
 
-## Troubleshooting
+🧰 Troubleshooting
+Foreign Key Constraints
 
-### Foreign Key Constraints
+If you get constraint errors:
 
-If you encounter foreign key constraint errors, you may need to:
-
-1. Disable foreign key checks temporarily:
-```sql
 SET FOREIGN_KEY_CHECKS=0;
 -- Run archive
 SET FOREIGN_KEY_CHECKS=1;
-```
 
-2. Or modify the tool to handle this automatically (add to the code)
+Large Tables
 
-### Large Tables
+Run during off-peak hours
 
-For very large tables (millions of records):
+Ensure enough disk space (2× table size)
 
-- Consider running during off-peak hours
-- Monitor disk space (you'll temporarily need 2x table size)
-- Increase MySQL timeouts if needed
-- Use smaller batch sizes for deletion
+Adjust MySQL timeouts
 
-### No Records to Archive
+Use smaller deletion batches
 
-If the tool reports "No records to archive", check:
+No Records to Archive
 
-- The date column being used
-- The cutoff date calculation
-- Data in your table
+Check:
 
-## Best Practices
+Date column used
 
-1. **Always run dry-run first**: Test with `-dry-run=true`
-2. **Backup before archiving**: Take a database backup
-3. **Monitor disk space**: Ensure adequate space for duplication
-4. **Schedule during low traffic**: Run during maintenance windows
-5. **Keep logs**: Archive log files for compliance
-6. **Test restore procedures**: Verify you can restore from archives
+Cutoff date calculation
 
-## Cron Job Setup
+Actual data range
 
-To run automatically:
+💎 Benefits of CSV Export
 
-```bash
-# Edit crontab
+📊 Easy Analysis: Import into Excel, Google Sheets, or BI tools
+
+💡 Lightweight: Smaller files than SQL dumps
+
+🌍 Universal Format: Works with any platform
+
+⚡ Fast: Efficient and stream-based
+
+🔄 Portable: Easy migration across systems
+
+The CSV exporter uses batch streaming (5000 rows) for optimal performance and low memory footprint — suitable for very large tables.
+
+🕒 Cron Job Setup
+
+To schedule automatic archiving:
+
 crontab -e
-
-# Add line to run daily at 2 AM
+# Run daily at 2 AM
 0 2 * * * /path/to/db-archive -database=sms_db -table=smspush -days=90 -password=$DB_PASSWORD >> /var/log/db-archive.log 2>&1
-```
 
-## License
+📜 License
 
-MIT License - feel free to modify and use as needed.
+MIT License — free to use and modify.
