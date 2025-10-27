@@ -321,7 +321,7 @@ func modifyCreateStatement(createStmt, oldName, newName, suffix string) string {
 }
 
 func copyOldRecords(db *sql.DB, sourceTable, destTable, dateColumn string, cutoffDate time.Time, logger *Logger) error {
-	query := fmt.Sprintf("INSERT INTO `%s` SELECT * FROM `%s` WHERE `%s` > ?", destTable, sourceTable, dateColumn)
+	query := fmt.Sprintf("INSERT INTO `%s` SELECT * FROM `%s` WHERE `%s` < ?", destTable, sourceTable, dateColumn)
 	logger.Info("Executing: %s with cutoff %s", query, cutoffDate.Format("2006-01-02"))
 
 	result, err := db.Exec(query, cutoffDate)
@@ -336,7 +336,7 @@ func copyOldRecords(db *sql.DB, sourceTable, destTable, dateColumn string, cutof
 }
 
 func deleteOldRecords(db *sql.DB, table, dateColumn string, cutoffDate time.Time, logger *Logger) error {
-	query := fmt.Sprintf("DELETE FROM `%s` WHERE `%s` > ?", table, dateColumn)
+	query := fmt.Sprintf("DELETE FROM `%s` WHERE `%s` < ?", table, dateColumn)
 	logger.Info("Executing: %s with cutoff %s", query, cutoffDate.Format("2006-01-02"))
 
 	result, err := db.Exec(query, cutoffDate)
